@@ -68,6 +68,44 @@ curl http://localhost:4000/health
 | `STUN_URL` | STUN server, mac dinh dung Google STUN mien phi |
 | `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | TURN server + credential co dinh |
 | `TURN_STATIC_AUTH_SECRET`, `TURN_CREDENTIAL_TTL_SECONDS` | Neu coturn bat `static-auth-secret`, server tu sinh credential TURN ngan han (khuyen nghi hon credential co dinh) |
+| `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRODUCTION` | Cau hinh APNs Auth Key (.p8) de gui VoIP Push (PushKit) cho iOS - de trong thi tinh nang "nhan cuoc goi khi app bi kill" khong hoat dong. Xem muc rieng ben duoi. |
+
+## Nhan cuoc goi khi app da bi kill (iOS - VoIP Push / PushKit)
+
+Mac dinh, tinh nang goi video chi hoat dong khi app dang mo (foreground/background) va con
+giu duoc ket noi socket.io toi server nay. Neu nguoi dung gat app di (kill hoan toan), socket
+ngat ngay lap tuc va server KHONG CO CACH NAO bao cho ho biet co cuoc goi den - remote
+notification thong thuong cung khong danh thuc duoc app da bi kill.
+
+Cach duy nhat Apple cho phep de giai quyet: **VoIP Push (PushKit)**. Phia app (`app-hunonic`)
+da duoc tich hop san (xem `AppDelegate.mm`, `CallManager.js`). Phia server nay da co san logic
+gui push qua `src/services/apnsService.js` va tu dong bao lai `call:incoming` khi callee vua
+online tro lai sau khi bi danh thuc (xem `socket.on('register')` trong `callEvents.js`).
+
+**De tinh nang nay hoat dong thuc su, can lam them cac buoc sau (thu cong, ngoai code):**
+
+1. **Tao APNs Auth Key**: vao [Apple Developer](https://developer.apple.com/account) >
+   Certificates, Identifiers & Profiles > Keys > bam "+" > tick "Apple Push Notifications
+   service (APNs)" > Continue > Register. Tai ve file `.p8` (**chi tai duoc 1 lan duy nhat**,
+   luu can than) va ghi lai **Key ID**.
+2. **Team ID**: xem o trang Membership cua Apple Developer.
+3. Dat 5 bien trong `.env` (xem bang bien moi truong o tren): `APNS_KEY_PATH` (duong dan toi
+   file `.p8` vua tai, copy vao server/VPS), `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`
+   (bundle id cua app, KHONG kem `.voip`), `APNS_PRODUCTION` (`false` khi test bang build debug
+   qua Xcode, `true` khi build production/TestFlight/App Store).
+4. **Phia app**: chay `yarn add react-native-voip-push-notification` roi `cd ios && pod
+   install`, sau do build lai app tu Xcode (thay doi native code khong the Fast Refresh duoc -
+   phai build lai hoan toan).
+5. Test: mo app, login (de app dang ky voipToken len server), **gat app di (kill hoan toan)**,
+   roi dung may khac goi toi - man hinh cuoc goi den kieu CallKit (toan man hinh, giong cuoc
+   goi thuong cua iOS) phai tu hien len du app dang khong chay.
+
+Neu khong cau hinh APNs (de trong cac bien tren), server se tu dong bo qua buoc gui VoIP push
+(chi log loi `APNS_NOT_CONFIGURED`) - goi video van hoat dong binh thuong khi ca 2 app deu
+dang mo, chi khong "danh thuc" duoc app da bi kill.
+
+Android chua co tinh nang tuong duong (can FCM high-priority data message + Headless JS/
+foreground service) - se lam sau.
 
 ## Viec CAN LAM truoc khi len production
 
@@ -89,11 +127,13 @@ Client ket noi socket.io kem `auth: { token }`, sau do:
 
 ### 1. `register` (client -> server, co ack)
 ```js
-socket.emit('register', { userId: '123' }, (res) => {
+socket.emit('register', { userId: '123', voipToken: '<PushKit voip token, chi iOS>' }, (res) => {
   // res: { ok: true } | { ok: false, error }
 });
 ```
 Goi ngay sau khi ket noi (va sau moi lan reconnect) de nguoi khac co the goi toi minh.
+`voipToken` la tuy chon - chi co tren iOS, dung de server gui VoIP Push (PushKit) danh thuc
+may khi co cuoc goi toi luc app dang bi kill (xem muc "Nhan cuoc goi khi app bi kill" ben duoi).
 
 ### 2. Nguoi goi khoi tao cuoc goi — `call:invite` (co ack tra ve `callId`)
 ```js

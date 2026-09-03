@@ -8,8 +8,14 @@
 const userIdToSocketId = new Map();
 const socketIdToUserId = new Map();
 
-const activeCalls = new Map(); // callId -> { callerId, calleeId, status, createdAt }
+const activeCalls = new Map(); // callId -> { callerId, calleeId, status, createdAt, fromUser, callType }
 const userIdToCallId = new Map(); // userId -> callId (dang trong 1 cuoc goi, ke ca luc dang "ringing")
+
+// VoIP push token (PushKit, iOS) theo userId - dung de "danh thuc" may khi user dang offline
+// (khong co socket dang ket noi) nhung co nguoi khac dang goi toi. Giu lai ke ca sau khi
+// user disconnect (KHONG xoa trong unregisterSocket) vi luc do ho van co the nhan duoc cuoc
+// goi den thong qua VoIP push, du app da bi kill.
+const userIdToVoipToken = new Map();
 
 function registerUser(userId, socketId) {
     const previousSocketId = userIdToSocketId.get(userId);
@@ -47,10 +53,19 @@ function isUserBusy(userId) {
     return userIdToCallId.has(userId);
 }
 
-function startCall(callId, callerId, calleeId) {
-    activeCalls.set(callId, {callerId, calleeId, status: 'ringing', createdAt: Date.now()});
+function startCall(callId, callerId, calleeId, extra = {}) {
+    activeCalls.set(callId, {callerId, calleeId, status: 'ringing', createdAt: Date.now(), ...extra});
     userIdToCallId.set(callerId, callId);
     userIdToCallId.set(calleeId, callId);
+}
+
+function setVoipToken(userId, token) {
+    if (!token) return;
+    userIdToVoipToken.set(userId, token);
+}
+
+function getVoipToken(userId) {
+    return userIdToVoipToken.get(userId);
 }
 
 function markCallAccepted(callId) {
@@ -89,4 +104,6 @@ module.exports = {
     endCall,
     getCall,
     getCallByUserId,
+    setVoipToken,
+    getVoipToken,
 };

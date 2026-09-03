@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const registry = require('./registry');
+const apnsService = require('../services/apnsService');
 
 function generateCallId() {
     return crypto.randomUUID();
@@ -8,15 +9,34 @@ function generateCallId() {
 function registerCallEvents(io, socket) {
     // --- Client dang ky userId cho socket nay, de nguoi khac co the goi toi ---
     socket.on('register', (payload = {}, ack) => {
-        const {userId} = payload;
+        const {userId, voipToken} = payload;
         if (!userId) {
             if (ack) ack({ok: false, error: 'MISSING_USER_ID'});
             return;
         }
-        registry.registerUser(String(userId), socket.id);
-        socket.data.userId = String(userId);
+        const normalizedUserId = String(userId);
+        registry.registerUser(normalizedUserId, socket.id);
+        socket.data.userId = normalizedUserId;
+        if (voipToken) {
+            // Luu lai token push VoIP (PushKit, iOS) cua user nay - dung de danh thuc may ho
+            // bang push khi co ai goi toi luc ho dang offline (xem call:invite ben duoi).
+            registry.setVoipToken(normalizedUserId, voipToken);
+        }
         console.log(`[socket] user ${userId} registered (${socket.id})`);
         if (ack) ack({ok: true});
+
+        // User nay co the vua duoc VoIP push "danh thuc" (luc invite ho dang offline, server
+        // da gui push va tao san 1 cuoc goi trang thai "ringing") - gio ho vua ket noi lai +
+        // register, bao lai cho ho cuoc goi den ngay, vi luc invite server chua co socket nao
+        // cua ho de emit truc tiep duoc.
+        const pendingCall = registry.getCallByUserId(normalizedUserId);
+        if (pendingCall && pendingCall.status === 'ringing' && pendingCall.calleeId === normalizedUserId) {
+            socket.emit('call:incoming', {
+                callId: pendingCall.callId,
+                fromUser: pendingCall.fromUser,
+                callType: pendingCall.callType,
+            });
+        }
     });
 
     // --- Nguoi goi khoi tao 1 cuoc goi moi (audio hoac video) ---
@@ -33,19 +53,44 @@ function registerCallEvents(io, socket) {
             return ack && ack({ok: false, error: 'BUSY'});
         }
 
+        const normalizedCallType = callType === 'video' ? 'video' : 'audio';
+        const normalizedFromUser = fromUser || {id: fromUserId};
         const calleeSocketId = registry.getSocketIdByUserId(targetUserId);
-        if (!calleeSocketId) {
+        const calleeVoipToken = registry.getVoipToken(targetUserId);
+
+        // Callee khong co socket dang ket noi (app dang bi kill/ngoai mang) VA cung khong co
+        // voipToken da dang ky truoc do (chua tung login tren build co VoIP push) -> chiu,
+        // khong co cach nao bao cho ho biet duoc.
+        if (!calleeSocketId && !calleeVoipToken) {
             return ack && ack({ok: false, error: 'USER_OFFLINE'});
         }
 
         const callId = generateCallId();
-        registry.startCall(callId, fromUserId, targetUserId);
-
-        io.to(calleeSocketId).emit('call:incoming', {
-            callId,
-            fromUser: fromUser || {id: fromUserId},
-            callType: callType === 'video' ? 'video' : 'audio',
+        registry.startCall(callId, fromUserId, targetUserId, {
+            fromUser: normalizedFromUser,
+            callType: normalizedCallType,
         });
+
+        if (calleeSocketId) {
+            io.to(calleeSocketId).emit('call:incoming', {
+                callId,
+                fromUser: normalizedFromUser,
+                callType: normalizedCallType,
+            });
+        } else {
+            // Callee dang offline nhung co voipToken -> gui VoIP push (PushKit) de danh thuc
+            // may ho, CallKit se tu hien UI cuoc goi den ke ca khi app da bi kill hoan toan.
+            // Khi app ho tinh day, socket ket noi lai + register() se tu bao lai 'call:incoming'
+            // (xem socket.on('register') o tren).
+            apnsService.sendVoipPush(calleeVoipToken, {callId, fromUser: normalizedFromUser, callType: normalizedCallType})
+                .then((res) => {
+                    if (!res.ok) {
+                        console.error(`[socket] gui VoIP push cho user ${targetUserId} that bai:`, res.error);
+                    } else {
+                        console.log(`[socket] da gui VoIP push danh thuc user ${targetUserId} (callId=${callId})`);
+                    }
+                });
+        }
 
         if (ack) ack({ok: true, callId});
     });

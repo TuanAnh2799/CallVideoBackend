@@ -5,3 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 *.log
+
+# APNs Auth Key (.p8) - KHONG duoc commit len git, day la private key that su
+secrets/*.p8
+*.p8
