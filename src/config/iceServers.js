@@ -22,13 +22,19 @@ function generateTurnCredential() {
 function getIceServers() {
     const iceServers = [{urls: config.stunUrl}];
 
-    if (config.turnUrl) {
+    // Chi them TURN khi da cau hinh DAY DU (URL that + co credential, tu static-auth-secret
+    // hoac username/credential co dinh). Neu thieu credential, native WebRTC (iOS/Android) se
+    // tu choi khoi tao PeerConnection ngay khi nhan config chua 1 ICE server khong hop le ->
+    // toan bo cuoc goi bi huy ngay lap tuc, rat kho nhan ra tu phia client.
+    if (config.turnUrl && (config.turnStaticAuthSecret || (config.turnUsername && config.turnCredential))) {
         const {username, credential} = generateTurnCredential();
         iceServers.push({
             urls: config.turnUrl,
             username,
             credential,
         });
+    } else if (config.turnUrl) {
+        console.log('[iceServers] TURN_URL da khai bao nhung thieu credential -> bo qua TURN, chi dung STUN');
     }
 
     return iceServers;
