@@ -25,6 +25,39 @@ npm run dev   # chay voi nodemon, tu reload khi sua code
 npm start     # chay production
 ```
 
+## Chay server
+
+### 1. Chay local (dev)
+
+```bash
+npm install
+cp .env.example .env   # neu chua co file .env
+npm run dev
+```
+
+`npm run dev` dung `nodemon`, tu dong restart server moi khi sua code trong `src/`.
+Mac dinh server lang nghe tren cong khai bao trong `.env` (bien `PORT`, vi du `4000`).
+
+### 2. Chay production
+
+```bash
+npm install --omit=dev
+npm start
+```
+
+`npm start` chay truc tiep bang `node src/index.js`, khong tu reload — dung cho moi truong
+production (VPS/server that). Nen chay qua process manager (vi du `pm2 start src/index.js
+--name callvideo-server`) de server tu khoi dong lai neu crash hoac khi reboot may.
+
+### 3. Kiem tra server da chay
+
+```bash
+curl http://localhost:4000/health
+# -> { "ok": true, "uptime": ..., "timestamp": ... }
+```
+
+(Doi `4000` thanh gia tri `PORT` thuc te trong `.env` neu ban da doi.)
+
 ## Bien moi truong (.env)
 
 | Bien | Y nghia |
