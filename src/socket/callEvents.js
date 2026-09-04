@@ -125,6 +125,19 @@ function registerCallEvents(io, socket) {
         relayToOtherParty(call, 'call:ended', {callId});
     });
 
+    // --- Nguoi dung LOGOUT THAT SU khoi app (bam nut dang xuat) - khac voi 'disconnect' o
+    // duoi (mat mang/dong app/kill process): luc logout phai xoa han voipToken de thiet bi nay
+    // KHONG CON nhan duoc cuoc goi/push cua tai khoan vua dang xuat nua (xem ghi chu trong
+    // registry.clearVoipToken). Client goi event nay TRUOC khi disconnect socket.
+    socket.on('logout', (payload = {}, ack) => {
+        const userId = socket.data.userId;
+        if (userId) {
+            registry.clearVoipToken(userId);
+            console.log(`[socket] user ${userId} logout - da xoa voipToken (${socket.id})`);
+        }
+        if (ack) ack({ok: true});
+    });
+
     // --- Mat ket noi (rot mang, dong app, kill process...) ---
     socket.on('disconnect', () => {
         const userId = registry.unregisterSocket(socket.id);

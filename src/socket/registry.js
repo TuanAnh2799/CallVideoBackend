@@ -68,6 +68,15 @@ function getVoipToken(userId) {
     return userIdToVoipToken.get(userId);
 }
 
+// Xoa voipToken cua 1 user - goi khi user LOGOUT THAT SU (khac voi mat ket noi/app bi kill,
+// luc do VAN PHAI giu token de con danh thuc duoc). Neu khong xoa, token VoIP push (gan theo
+// THIET BI, khong doi khi doi tai khoan) se tiep tuc tro toi userId cu -> neu sau do co nguoi
+// khac login vao CUNG may do, cuoc goi toi tai khoan cu van danh thuc/hien popup nham tren may
+// dang duoc nguoi khac su dung.
+function clearVoipToken(userId) {
+    userIdToVoipToken.delete(userId);
+}
+
 function markCallAccepted(callId) {
     const call = activeCalls.get(callId);
     if (call) call.status = 'connected';
@@ -106,4 +115,5 @@ module.exports = {
     getCallByUserId,
     setVoipToken,
     getVoipToken,
+    clearVoipToken,
 };
