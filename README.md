@@ -69,8 +69,9 @@ curl http://localhost:4000/health
 | `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | TURN server + credential co dinh |
 | `TURN_STATIC_AUTH_SECRET`, `TURN_CREDENTIAL_TTL_SECONDS` | Neu coturn bat `static-auth-secret`, server tu sinh credential TURN ngan han (khuyen nghi hon credential co dinh) |
 | `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRODUCTION` | Cau hinh APNs Auth Key (.p8) de gui VoIP Push (PushKit) cho iOS - de trong thi tinh nang "nhan cuoc goi khi app bi kill" khong hoat dong. Xem muc rieng ben duoi. |
+| `FCM_SERVICE_ACCOUNT_PATH` | Cau hinh Service Account (.json) de gui FCM data message cho Android - de trong thi tinh nang "nhan cuoc goi khi app bi kill" khong hoat dong tren Android. Xem muc rieng ben duoi. |
 
-## Nhan cuoc goi khi app da bi kill (iOS - VoIP Push / PushKit)
+## Nhan cuoc goi khi app da bi kill (iOS - VoIP Push / PushKit, Android - FCM)
 
 Mac dinh, tinh nang goi video chi hoat dong khi app dang mo (foreground/background) va con
 giu duoc ket noi socket.io toi server nay. Neu nguoi dung gat app di (kill hoan toan), socket
@@ -104,8 +105,39 @@ Neu khong cau hinh APNs (de trong cac bien tren), server se tu dong bo qua buoc 
 (chi log loi `APNS_NOT_CONFIGURED`) - goi video van hoat dong binh thuong khi ca 2 app deu
 dang mo, chi khong "danh thuc" duoc app da bi kill.
 
-Android chua co tinh nang tuong duong (can FCM high-priority data message + Headless JS/
-foreground service) - se lam sau.
+### Android - FCM data message
+
+Co che tuong tu nhung dung FCM (Firebase Cloud Messaging) thay vi PushKit, vi Android khong
+co API rieng cho VoIP push nhu iOS. Phia app da tich hop san (xem `index.js` -
+`setBackgroundMessageHandler`, `CallManager.js` - `setupFcmToken`/`handleBackgroundIncomingCallPush`).
+Phia server da co san logic gui push qua `src/services/fcmService.js`, dung chung co che
+"tu dong bao lai `call:incoming` khi callee vua online tro lai" voi iOS (`socket.on('register')`
+trong `callEvents.js`).
+
+**De tinh nang nay hoat dong thuc su, can lam them cac buoc sau (thu cong, ngoai code):**
+
+1. **Tao Firebase Service Account key**: vao [Firebase Console](https://console.firebase.google.com)
+   > chon project cua app-hunonic > banh rang Project settings > tab "Service accounts" >
+   "Generate new private key". Tai ve file `.json` (**giu can than, day la private key that
+   su**), copy vao thu muc `secrets/` cua server (giong cach lam voi file `.p8`).
+2. Dat bien `FCM_SERVICE_ACCOUNT_PATH` trong `.env` tro toi file `.json` vua tai.
+3. **Phia app**: da co san `@react-native-firebase/messaging` + `google-services.json` trong
+   project (khong can cai them goi nao), chi can build lai tu Android Studio/`react-native
+   run-android` (thay doi native-adjacent nhu `index.js` can reload/rebuild hoan toan, khong
+   the Fast Refresh).
+4. Test: mo app, login (de app dang ky fcmToken len server), **gat app di (kill hoan toan tu
+   danh sach da nhiem, khong chi bam Home)**, roi dung may khac goi toi - UI cuoc goi den qua
+   CallKeep phai tu hien len du app dang khong chay.
+
+**Luu y quan trong khi test:** app hien dang co san 1 service xu ly FCM khac
+(`RNPushNotificationListenerService` cua thu vien `react-native-push-notification`, dung cho
+cac thong bao thuong khac cua app) cung khai bao nhan `com.google.firebase.MESSAGING_EVENT`
+trong `AndroidManifest.xml` - trung voi service ma `@react-native-firebase/messaging` tu dong
+khai bao (`ReactNativeFirebaseMessagingService`). Ve nguyen tac day la 2 API rieng biet nen
+thuong khong xung dot, nhung Android/Firebase co the xu ly khac nhau tuy phien ban khi co 2
+service cung nhan 1 loai su kien nhu vay trong cung 1 app. Neu test thay app KHONG duoc danh
+thuc (khong thay log `[index] setBackgroundMessageHandler nhan duoc message` trong
+`adb logcat` luc app da kill ma co cuoc goi toi), day la nghi van dau tien can kiem tra.
 
 ## Viec CAN LAM truoc khi len production
 
@@ -127,13 +159,18 @@ Client ket noi socket.io kem `auth: { token }`, sau do:
 
 ### 1. `register` (client -> server, co ack)
 ```js
-socket.emit('register', { userId: '123', voipToken: '<PushKit voip token, chi iOS>' }, (res) => {
+socket.emit('register', {
+  userId: '123',
+  voipToken: '<PushKit voip token, chi iOS>',   // tuy chon
+  fcmToken: '<FCM token, chi Android>',          // tuy chon
+}, (res) => {
   // res: { ok: true } | { ok: false, error }
 });
 ```
 Goi ngay sau khi ket noi (va sau moi lan reconnect) de nguoi khac co the goi toi minh.
-`voipToken` la tuy chon - chi co tren iOS, dung de server gui VoIP Push (PushKit) danh thuc
-may khi co cuoc goi toi luc app dang bi kill (xem muc "Nhan cuoc goi khi app bi kill" ben duoi).
+`voipToken`/`fcmToken` la tuy chon - 1 client chi gui 1 trong 2 tuy platform, dung de server
+gui push danh thuc may khi co cuoc goi toi luc app dang bi kill (xem muc "Nhan cuoc goi khi
+app bi kill" ben duoi).
 
 ### 2. Nguoi goi khoi tao cuoc goi — `call:invite` (co ack tra ve `callId`)
 ```js

@@ -25,6 +25,17 @@ const config = {
             return !!(this.keyPath && this.keyId && this.teamId && this.bundleId);
         },
     },
+
+    // === FCM data message (Firebase, Android) - tuong duong APNs VoIP push nhung cho Android:
+    // danh thuc app nhan cuoc goi den ke ca khi da bi kill. Can file Service Account JSON tai
+    // Firebase Console > Project settings > Service accounts > Generate new private key. GIONG
+    // file .p8 cua APNs: private key that su, KHONG duoc commit len git (xem .gitignore).
+    fcm: {
+        serviceAccountPath: process.env.FCM_SERVICE_ACCOUNT_PATH || '',
+        get enabled() {
+            return !!this.serviceAccountPath;
+        },
+    },
 };
 
 module.exports = config;

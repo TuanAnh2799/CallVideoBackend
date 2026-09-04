@@ -10,3 +10,7 @@ yarn-error.log*
 # APNs Auth Key (.p8) - KHONG duoc commit len git, day la private key that su
 secrets/*.p8
 *.p8
+
+# Firebase service account (.json) - KHONG duoc commit len git, day la private key that su
+secrets/*.json
+firebase-service-account*.json

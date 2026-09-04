@@ -17,6 +17,10 @@ const userIdToCallId = new Map(); // userId -> callId (dang trong 1 cuoc goi, ke
 // goi den thong qua VoIP push, du app da bi kill.
 const userIdToVoipToken = new Map();
 
+// FCM token (Firebase, Android) - tuong duong userIdToVoipToken nhung cho Android. 1 user chi
+// co 1 trong 2 (voipToken neu la iOS, fcmToken neu la Android) tuy platform dang dang nhap.
+const userIdToFcmToken = new Map();
+
 function registerUser(userId, socketId) {
     const previousSocketId = userIdToSocketId.get(userId);
     if (previousSocketId && previousSocketId !== socketId) {
@@ -77,6 +81,20 @@ function clearVoipToken(userId) {
     userIdToVoipToken.delete(userId);
 }
 
+function setFcmToken(userId, token) {
+    if (!token) return;
+    userIdToFcmToken.set(userId, token);
+}
+
+function getFcmToken(userId) {
+    return userIdToFcmToken.get(userId);
+}
+
+// Xem ghi chu o clearVoipToken - ly do tuong tu, goi khi user LOGOUT THAT SU.
+function clearFcmToken(userId) {
+    userIdToFcmToken.delete(userId);
+}
+
 function markCallAccepted(callId) {
     const call = activeCalls.get(callId);
     if (call) call.status = 'connected';
@@ -116,4 +134,7 @@ module.exports = {
     setVoipToken,
     getVoipToken,
     clearVoipToken,
+    setFcmToken,
+    getFcmToken,
+    clearFcmToken,
 };

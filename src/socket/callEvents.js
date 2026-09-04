@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const registry = require('./registry');
 const apnsService = require('../services/apnsService');
+const fcmService = require('../services/fcmService');
 
 function generateCallId() {
     return crypto.randomUUID();
@@ -9,7 +10,7 @@ function generateCallId() {
 function registerCallEvents(io, socket) {
     // --- Client dang ky userId cho socket nay, de nguoi khac co the goi toi ---
     socket.on('register', (payload = {}, ack) => {
-        const {userId, voipToken} = payload;
+        const {userId, voipToken, fcmToken} = payload;
         if (!userId) {
             if (ack) ack({ok: false, error: 'MISSING_USER_ID'});
             return;
@@ -21,6 +22,10 @@ function registerCallEvents(io, socket) {
             // Luu lai token push VoIP (PushKit, iOS) cua user nay - dung de danh thuc may ho
             // bang push khi co ai goi toi luc ho dang offline (xem call:invite ben duoi).
             registry.setVoipToken(normalizedUserId, voipToken);
+        }
+        if (fcmToken) {
+            // Tuong tu voipToken nhung cho Android (FCM data message) - xem call:invite ben duoi.
+            registry.setFcmToken(normalizedUserId, fcmToken);
         }
         console.log(`[socket] user ${userId} registered (${socket.id})`);
         if (ack) ack({ok: true});
@@ -57,11 +62,12 @@ function registerCallEvents(io, socket) {
         const normalizedFromUser = fromUser || {id: fromUserId};
         const calleeSocketId = registry.getSocketIdByUserId(targetUserId);
         const calleeVoipToken = registry.getVoipToken(targetUserId);
+        const calleeFcmToken = registry.getFcmToken(targetUserId);
 
         // Callee khong co socket dang ket noi (app dang bi kill/ngoai mang) VA cung khong co
-        // voipToken da dang ky truoc do (chua tung login tren build co VoIP push) -> chiu,
-        // khong co cach nao bao cho ho biet duoc.
-        if (!calleeSocketId && !calleeVoipToken) {
+        // voipToken (iOS) hay fcmToken (Android) da dang ky truoc do -> chiu, khong co cach
+        // nao bao cho ho biet duoc.
+        if (!calleeSocketId && !calleeVoipToken && !calleeFcmToken) {
             return ack && ack({ok: false, error: 'USER_OFFLINE'});
         }
 
@@ -78,18 +84,33 @@ function registerCallEvents(io, socket) {
                 callType: normalizedCallType,
             });
         } else {
-            // Callee dang offline nhung co voipToken -> gui VoIP push (PushKit) de danh thuc
-            // may ho, CallKit se tu hien UI cuoc goi den ke ca khi app da bi kill hoan toan.
-            // Khi app ho tinh day, socket ket noi lai + register() se tu bao lai 'call:incoming'
-            // (xem socket.on('register') o tren).
-            apnsService.sendVoipPush(calleeVoipToken, {callId, fromUser: normalizedFromUser, callType: normalizedCallType})
-                .then((res) => {
-                    if (!res.ok) {
-                        console.error(`[socket] gui VoIP push cho user ${targetUserId} that bai:`, res.error);
-                    } else {
-                        console.log(`[socket] da gui VoIP push danh thuc user ${targetUserId} (callId=${callId})`);
-                    }
-                });
+            // Callee dang offline nhung co voipToken (iOS) va/hoac fcmToken (Android) -> gui
+            // push tuong ung de danh thuc may ho, app se tu hien UI cuoc goi qua CallKeep ke ca
+            // khi da bi kill hoan toan. Khi app ho tinh day, socket ket noi lai + register() se
+            // tu bao lai 'call:incoming' (xem socket.on('register') o tren). Ve ly thuyet 1 user
+            // chi co 1 trong 2 token tuy platform, nhung gui ca 2 neu co du (vo hai, socket.io
+            // khong quan tam thu tu) de phong truong hop du lieu con sot lai tu lan dang nhap
+            // platform khac truoc do.
+            if (calleeVoipToken) {
+                apnsService.sendVoipPush(calleeVoipToken, {callId, fromUser: normalizedFromUser, callType: normalizedCallType})
+                    .then((res) => {
+                        if (!res.ok) {
+                            console.error(`[socket] gui VoIP push (iOS) cho user ${targetUserId} that bai:`, res.error);
+                        } else {
+                            console.log(`[socket] da gui VoIP push (iOS) danh thuc user ${targetUserId} (callId=${callId})`);
+                        }
+                    });
+            }
+            if (calleeFcmToken) {
+                fcmService.sendCallPush(calleeFcmToken, {callId, fromUser: normalizedFromUser, callType: normalizedCallType})
+                    .then((res) => {
+                        if (!res.ok) {
+                            console.error(`[socket] gui FCM push (Android) cho user ${targetUserId} that bai:`, res.error);
+                        } else {
+                            console.log(`[socket] da gui FCM push (Android) danh thuc user ${targetUserId} (callId=${callId})`);
+                        }
+                    });
+            }
         }
 
         if (ack) ack({ok: true, callId});
@@ -133,7 +154,8 @@ function registerCallEvents(io, socket) {
         const userId = socket.data.userId;
         if (userId) {
             registry.clearVoipToken(userId);
-            console.log(`[socket] user ${userId} logout - da xoa voipToken (${socket.id})`);
+            registry.clearFcmToken(userId);
+            console.log(`[socket] user ${userId} logout - da xoa voipToken/fcmToken (${socket.id})`);
         }
         if (ack) ack({ok: true});
     });
