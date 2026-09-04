@@ -152,6 +152,20 @@ thuc (khong thay log `[index] setBackgroundMessageHandler nhan duoc message` tro
 4. **Scale nhieu instance**: hien `src/socket/registry.js` luu state trong bo nho (Map), chi
    chay dung voi 1 instance. Muon chay nhieu instance sau load balancer thi phai chuyen sang
    Redis (`@socket.io/redis-adapter` + Redis hash/set thay cho Map).
+5. **Dua `.env` + file secret len VPS**: vi `.env`, `secrets/*.p8`, `secrets/*.json` deu bi
+   `.gitignore` loai tru (co tinh, de khong lo key that len git), nen `git clone`/`git pull`
+   tren VPS se KHONG BAO GIO mang theo 3 file nay. Phai copy thu cong 1 lan moi khi setup 1
+   server moi, tach biet hoan toan khoi luong deploy code qua git, vi du bang scp tu may dev:
+   ```bash
+   scp .env user@vps:/duong/dan/CallVideoServer/.env
+   scp secrets/AuthKey_8NJH5BF845.p8 secrets/firebase-service-account.json \
+       user@vps:/duong/dan/CallVideoServer/secrets/
+   ```
+   Nho sua lai gia tri trong `.env` tren VPS cho dung moi truong production that (vi du
+   `APNS_PRODUCTION=true` neu app build tu App Store/TestFlight, `CORS_ORIGIN` gioi han dung
+   domain thay vi `*`) - khong copy y nguyen `.env` cua may dev sang. Deploy code sau nay
+   (`git pull` + restart) khong dung toi 3 file nay nua, chi can lam lai buoc scp khi doi key
+   hoac setup them server moi.
 
 ## Giao thuc socket (event) — client <-> server
 

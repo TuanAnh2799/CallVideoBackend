@@ -1,4 +1,10 @@
-const admin = require('firebase-admin');
+// firebase-admin v12+ da doi sang "modular API" (giong firebase JS SDK phia web/client) -
+// KHONG con dung duoc admin.credential.cert()/admin.messaging(app) kieu namespace cu nua (goi
+// nhu vay se loi "Cannot read properties of undefined (reading 'cert')" vi admin.credential
+// khong con ton tai). Phai import rieng tung ham can dung tu 'firebase-admin/app' va
+// 'firebase-admin/messaging'.
+const {initializeApp, cert} = require('firebase-admin/app');
+const {getMessaging} = require('firebase-admin/messaging');
 const config = require('../config/env');
 
 // App Firebase Admin (dat ten rieng 'callvideo-fcm' de khong dung app mac dinh, tranh xung
@@ -12,11 +18,11 @@ function getFcmApp() {
     if (fcmApp) return fcmApp;
 
     try {
-        // admin.credential.cert() nhan truc tiep duong dan file JSON (tu doc + parse ben
-        // trong), duong dan tinh theo thu muc dang chay "node src/index.js" (process.cwd()),
-        // giong cach APNS_KEY_PATH dang hoat dong.
-        fcmApp = admin.initializeApp(
-            {credential: admin.credential.cert(config.fcm.serviceAccountPath)},
+        // cert() nhan truc tiep duong dan file JSON (tu doc + parse ben trong), duong dan
+        // tinh theo thu muc dang chay "node src/index.js" (process.cwd()), giong cach
+        // APNS_KEY_PATH dang hoat dong.
+        fcmApp = initializeApp(
+            {credential: cert(config.fcm.serviceAccountPath)},
             'callvideo-fcm'
         );
         return fcmApp;
@@ -57,7 +63,7 @@ async function sendCallPush(fcmToken, {callId, fromUser, callType}) {
     };
 
     try {
-        await admin.messaging(app).send(message);
+        await getMessaging(app).send(message);
         return {ok: true};
     } catch (e) {
         console.error('[fcm] gui push that bai:', e?.errorInfo?.message || e.message);
